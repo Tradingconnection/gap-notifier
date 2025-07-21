@@ -1,0 +1,29 @@
+
+name: Weekly Gap Notifier
+
+on:
+  schedule:
+    - cron: '0 15 * * 0'  # dimanche à 17h heure de Paris
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install yfinance requests
+
+      - name: Run gap_notifier.py
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: python gap_notifier.py
