@@ -2,7 +2,7 @@ import yfinance as yf
 import requests
 from datetime import datetime
 
-# Actifs à surveiller
+# Liste des actifs à surveiller
 symbols = {
     "GOLD": "GC=F",
     "OIL": "CL=F",
@@ -12,21 +12,30 @@ symbols = {
     "GERMAN DAX": "^GDAXI"
 }
 
-# Ton webhook Discord
+# Ton webhook Discord (déjà intégré)
 WEBHOOK_URL = "https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx"
 
 def get_gap(ticker):
     data = yf.download(ticker, period="5d", interval="1d", progress=False)
+
     if len(data) < 2:
         return None
 
-    last_close = data['Close'].iloc[-2]
-    today_open = data['Open'].iloc[-1]
+    try:
+        last_close = float(data['Close'].iloc[-2])
+        today_open = float(data['Open'].iloc[-1])
+        gap = (today_open - last_close) / last_close * 100
 
-    gap = (today_open - last_close) / last_close * 100
-    direction = "🔼 GAP HAUSSIER" if gap > 0 else "🔽 GAP BAISSIER" if gap < 0 else "⏸️ Stable"
+        if gap > 0:
+            direction = "🔼 GAP HAUSSIER"
+        elif gap < 0:
+            direction = "🔽 GAP BAISSIER"
+        else:
+            direction = "⏸️ Stable"
 
-    return today_open, last_close, gap, direction
+        return today_open, last_close, gap, direction
+    except Exception as e:
+        return None
 
 def build_messages():
     messages = []
