@@ -6,26 +6,26 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("FINNHUB_API_KEY")
 
-# Liste des symboles Finnhub
+# ✅ Liste des actifs avec les symboles Finnhub vérifiés
 symbols = {
     "GOLD": "OANDA:XAU_USD",
     "OIL": "OANDA:WTICO_USD",
-    "NASDAQ 100": "^NDX",
-    "DOW JONES": "^DJI",
-    "CAC 40": "^FCHI",
-    "GERMAN DAX": "^GDAXI"
+    "NASDAQ 100": "INDEX:NDX",
+    "DOW JONES": "INDEX:DJI",
+    "CAC 40": "INDEX:PX1",         # Alternative CAC40
+    "GERMAN DAX": "INDEX:DAX"
 }
 
+# ✅ Webhook Discord (déjà intégré)
 WEBHOOK_URL = "https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx"
 
 def get_gap(symbol):
     base_url = "https://finnhub.io/api/v1/stock/candle"
 
-    # Dates : hier (close) et aujourd’hui (open)
-    today = datetime.now()
-    yesterday = today - timedelta(days=3)  # on saute le week-end
+    today = datetime.utcnow()
+    three_days_ago = today - timedelta(days=3)
 
-    from_ts = int(yesterday.replace(hour=0, minute=0).timestamp())
+    from_ts = int(three_days_ago.replace(hour=0, minute=0).timestamp())
     to_ts = int(today.replace(hour=23, minute=59).timestamp())
 
     params = {
@@ -36,50 +36,62 @@ def get_gap(symbol):
         "token": API_KEY
     }
 
-    response = requests.get(base_url, params=params)
-    data = response.json()
-
-    if data.get("s") != "ok" or len(data["c"]) < 2:
-        print(f"⚠️ Données incomplètes pour {symbol}")
-        return None
-
-    # Close = avant-dernier jour, Open = dernier jour
     try:
+        response = requests.get(base_url, params=params)
+        data = response.json()
+
+        # Log brut (pour débug)
+        print(f"[DEBUG] {symbol} ➜ {data}")
+
+        if data.get("s") != "ok" or len(data.get("c", [])) < 2:
+            print(f"⚠️ Pas de données valides pour {symbol}")
+            return None
+
         last_close = data["c"][-2]
         today_open = data["o"][-1]
+
         gap = (today_open - last_close) / last_close * 100
         direction = "🔼 GAP HAUSSIER" if gap > 0 else "🔽 GAP BAISSIER"
+
         return {
             "direction": direction,
             "gap": round(gap, 2),
             "open": round(today_open, 2),
             "close": round(last_close, 2)
         }
+
     except Exception as e:
-        print(f"❌ Erreur sur {symbol} : {e}")
+        print(f"❌ Erreur pour {symbol} : {e}")
         return None
 
 def build_message():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message = f"📈 Gaps détectés – {now}\n\n"
+    message = f"📊 **Gaps détectés – {now}**\n\n"
 
+    found = False
     for name, symbol in symbols.items():
         result = get_gap(symbol)
         if result:
+            found = True
             message += (
-                f"{name} → {result['direction']} de {abs(result['gap'])}%\n"
-                f"(Open: {result['open']} | Close: {result['close']})\n\n"
+                f"**{name}** → {result['direction']} de **{abs(result['gap'])}%**\n"
+                f"`Open: {result['open']} | Close: {result['close']}`\n\n"
             )
+
+    if not found:
+        message += "⚠️ Aucune donnée exploitable pour les actifs sélectionnés."
+
+    message += "\n*Powered by [Finnhub.io](https://finnhub.io)*"
     return message
 
 def send_to_discord(content):
     payload = {"content": content}
     try:
-        r = requests.post(WEBHOOK_URL, json=payload)
-        if r.status_code == 204:
-            print("✅ Message envoyé")
+        response = requests.post(WEBHOOK_URL, json=payload)
+        if response.status_code == 204:
+            print("✅ Message envoyé avec succès.")
         else:
-            print(f"❌ Discord : {r.status_code} - {r.text}")
+            print(f"❌ Erreur Discord ({response.status_code}): {response.text}")
     except Exception as e:
         print(f"❌ Erreur Discord : {e}")
 
