@@ -2,7 +2,7 @@ name: Weekly Gap Notifier
 
 on:
   schedule:
-    - cron: '0 15 * * 0'  # Dimanche à 17h heure de Paris
+    - cron: '0 15 * * 0'  # dimanche à 17h heure de Paris
   workflow_dispatch:
 
 jobs:
@@ -20,9 +20,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests python-dotenv
+          pip install requests
 
-      - name: Run IG Gap Notifier script
+      - name: Run IG Gap Notifier
         env:
           IG_API_KEY: ${{ secrets.IG_API_KEY }}
           IG_IDENTIFIER: ${{ secrets.IG_IDENTIFIER }}
