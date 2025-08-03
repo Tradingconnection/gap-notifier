@@ -6,14 +6,14 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("FINNHUB_API_KEY")
 
-# Liste des actifs avec symboles Finnhub vérifiés
+# ✅ Actifs confirmés compatibles Finnhub en gratuit
 symbols = {
     "GOLD": "OANDA:XAU_USD",
     "OIL": "OANDA:WTICO_USD",
-    "NASDAQ 100": "INDEX:NDX",
-    "DOW JONES": "INDEX:DJI",
-    "CAC 40": "INDEX:PX1",
-    "GERMAN DAX": "INDEX:DAX"
+    "NASDAQ 100 ETF (QQQ)": "US:QQQ",
+    "DOW JONES ETF (DIA)": "US:DIA",
+    "S&P 500 ETF (SPY)": "US:SPY",
+    "DAX ETF (iShares)": "US:DAX"
 }
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx"
@@ -39,7 +39,6 @@ def get_gap(symbol):
         response = requests.get(base_url, params=params)
         data = response.json()
 
-        # 🧪 DEBUG COMPLET
         print(f"\n📡 {symbol}")
         print("URL ➜", response.url)
         print("Réponse JSON ➜", data)
