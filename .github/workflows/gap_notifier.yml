@@ -1,4 +1,3 @@
-
 name: Weekly Gap Notifier
 
 on:
@@ -21,9 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance requests
+          pip install requests python-dotenv
 
-      - name: Run gap_notifier.py
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: python gap_notifier.py
+      - name: Run gap_notifier_finnhub.py
+        run: python gap_notifier_finnhub.py
