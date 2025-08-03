@@ -105,4 +105,5 @@ def send_to_discord(msg):
     try:
         res = requests.post(DISCORD_WEBHOOK, json={"content": msg})
         if res.status_code == 204:
-            print("✅ Message Dis
+            print("✅ Message Discord envoyé.")
+
