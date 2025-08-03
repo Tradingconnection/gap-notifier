@@ -6,26 +6,25 @@ from dotenv import load_dotenv
 load_dotenv()
 API_KEY = os.getenv("FINNHUB_API_KEY")
 
-# ✅ Liste des actifs avec les symboles Finnhub vérifiés
+# Liste des actifs avec symboles Finnhub vérifiés
 symbols = {
     "GOLD": "OANDA:XAU_USD",
     "OIL": "OANDA:WTICO_USD",
     "NASDAQ 100": "INDEX:NDX",
     "DOW JONES": "INDEX:DJI",
-    "CAC 40": "INDEX:PX1",         # Alternative CAC40
+    "CAC 40": "INDEX:PX1",
     "GERMAN DAX": "INDEX:DAX"
 }
 
-# ✅ Webhook Discord (déjà intégré)
 WEBHOOK_URL = "https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx"
 
 def get_gap(symbol):
     base_url = "https://finnhub.io/api/v1/stock/candle"
 
     today = datetime.utcnow()
-    three_days_ago = today - timedelta(days=3)
+    seven_days_ago = today - timedelta(days=7)
 
-    from_ts = int(three_days_ago.replace(hour=0, minute=0).timestamp())
+    from_ts = int(seven_days_ago.replace(hour=0, minute=0).timestamp())
     to_ts = int(today.replace(hour=23, minute=59).timestamp())
 
     params = {
@@ -40,8 +39,10 @@ def get_gap(symbol):
         response = requests.get(base_url, params=params)
         data = response.json()
 
-        # Log brut (pour débug)
-        print(f"[DEBUG] {symbol} ➜ {data}")
+        # 🧪 DEBUG COMPLET
+        print(f"\n📡 {symbol}")
+        print("URL ➜", response.url)
+        print("Réponse JSON ➜", data)
 
         if data.get("s") != "ok" or len(data.get("c", [])) < 2:
             print(f"⚠️ Pas de données valides pour {symbol}")
@@ -61,7 +62,7 @@ def get_gap(symbol):
         }
 
     except Exception as e:
-        print(f"❌ Erreur pour {symbol} : {e}")
+        print(f"❌ Erreur avec {symbol} : {e}")
         return None
 
 def build_message():
