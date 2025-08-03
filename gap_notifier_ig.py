@@ -1,121 +1,147 @@
 import requests
+import datetime
 import os
-from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-# Chargement des variables d'environnement
 load_dotenv()
 
-# Configuration IG
+# Configuration IG API
 IG_API_KEY = os.getenv("IG_API_KEY")
 IG_IDENTIFIER = os.getenv("IG_IDENTIFIER")
 IG_PASSWORD = os.getenv("IG_PASSWORD")
+IG_ACCOUNT_TYPE = os.getenv("IG_ACCOUNT_TYPE", "DEMO")
+IG_BASE_URL = os.getenv("IG_BASE_URL", "https://demo-api.ig.com/gateway/deal")
 
-# Webhook Discord
-WEBHOOK_URL = "https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx"
+# Configuration Discord
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-# Actifs à surveiller (epic codes ou market codes IG à ajuster manuellement)
-symbols = {
-    "GOLD": "CS.D.GC.MONTH1",
-    "OIL": "CS.D.CL.MONTH1",
-    "NASDAQ 100": "IX.D.NASDAQ.IFM.IP",
-    "DOW JONES": "IX.D.DOW.IFM.IP",
-    "CAC 40": "IX.D.CAC.IDC.IP",
-    "GERMAN DAX": "IX.D.DAX.IDC.IP"
+# Headers initiaux
+HEADERS = {
+    "X-IG-API-KEY": IG_API_KEY,
+    "Content-Type": "application/json; charset=UTF-8",
+    "Accept": "application/json; charset=UTF-8",
+    "Version": "2"
 }
 
-# Authentification IG
-class IGSession:
-    def __init__(self):
-        self.api_key = IG_API_KEY
-        self.identifier = IG_IDENTIFIER
-        self.password = IG_PASSWORD
-        self.base_url = "https://demo-api.ig.com/gateway/deal"
-        self.headers = {
-            "X-IG-API-KEY": self.api_key,
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
-        self.session = requests.Session()
-        self.security_token = None
-        self.cst = None
-
-    def login(self):
-        url = f"{self.base_url}/session"
-        payload = {
-            "identifier": self.identifier,
-            "password": self.password
-        }
-        r = self.session.post(url, json=payload, headers=self.headers)
-        if r.status_code != 200:
-            raise Exception(f"Erreur de connexion IG: {r.status_code} - {r.text}")
-        self.cst = r.headers.get("CST")
-        self.security_token = r.headers.get("X-SECURITY-TOKEN")
-        self.headers.update({
-            "CST": self.cst,
-            "X-SECURITY-TOKEN": self.security_token
-        })
-
-    def get_prices(self, epic):
-        now = datetime.utcnow()
-        today = now.strftime("%Y-%m-%d")
-        yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-        url = f"{self.base_url}/prices/{epic}?resolution=D&from={yesterday}T00:00:00&to={today}T23:59:59&pageSize=2"
-        r = self.session.get(url, headers=self.headers)
-        if r.status_code != 200:
-            print(f"Erreur de données pour {epic} : {r.text}")
-            return None
-        data = r.json()
-        prices = data.get("prices", [])
-        if len(prices) < 2:
-            return None
-        close = prices[-2]["closePrice"]["bid"]
-        open_ = prices[-1]["openPrice"]["bid"]
-        return float(close), float(open_)
-
-def build_message():
-    ig = IGSession()
+def log_to_discord(message):
     try:
-        ig.login()
+        requests.post(DISCORD_WEBHOOK_URL, json={"content": message})
     except Exception as e:
-        return f"❌ Connexion IG échouée : {e}"
+        print("Erreur d'envoi Discord :", str(e))
 
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    message = f"📊 **Gaps détectés – {now}**\n\n"
-    found_data = False
 
-    for name, epic in symbols.items():
-        result = ig.get_prices(epic)
-        if result:
-            found_data = True
-            close, open_ = result
-            gap = (open_ - close) / close * 100
-            direction = "🔼 GAP HAUSSIER" if gap > 0 else "🔽 GAP BAISSIER"
-            message += (
-                f"**{name}** → {direction} de {abs(round(gap, 2))}%\n"
-                f"(Open: {round(open_, 2)} | Close: {round(close, 2)})\n\n"
-            )
-
-    if not found_data:
-        message += "⚠️ Aucune donnée exploitable pour les actifs sélectionnés.\n"
-
-    message += "\n*Powered by [IG Markets](https://labs.ig.com)*"
-    return message
-
-def send_to_discord(content):
-    payload = {"content": content}
+def authenticate_ig():
+    auth_data = {
+        "identifier": IG_IDENTIFIER,
+        "password": IG_PASSWORD
+    }
     try:
-        response = requests.post(WEBHOOK_URL, json=payload)
-        if response.status_code in [200, 204]:
-            print("✅ Message Discord envoyé.")
+        response = requests.post(f"{IG_BASE_URL}/session", json=auth_data, headers=HEADERS)
+        if response.status_code == 200:
+            cst = response.headers.get("CST")
+            x_security_token = response.headers.get("X-SECURITY-TOKEN")
+            HEADERS.update({"CST": cst, "X-SECURITY-TOKEN": x_security_token})
+            return True
         else:
-            print(f"❌ Erreur Discord ({response.status_code}): {response.text}")
+            log_to_discord(f"❌ Connexion IG échouée : Erreur de connexion IG: {response.status_code} - {response.text}")
+            return False
     except Exception as e:
-        print(f"❌ Erreur lors de l'envoi Discord : {e}")
+        log_to_discord(f"❌ Connexion IG échouée : {str(e)}")
+        return False
+
+
+def get_epic_from_market(market_name):
+    url = f"{IG_BASE_URL}/markets?searchTerm={market_name}"
+    try:
+        response = requests.get(url, headers=HEADERS)
+        if response.status_code == 200:
+            data = response.json()
+            if data["markets"]:
+                return data["markets"][0]["epic"]
+        return None
+    except:
+        return None
+
+
+def get_prices(epic, date_from, date_to):
+    url = f"{IG_BASE_URL}/prices/{epic}"
+    params = {
+        "resolution": "HOUR",
+        "from": date_from,
+        "to": date_to,
+    }
+    try:
+        response = requests.get(url, headers=HEADERS, params=params)
+        if response.status_code == 200:
+            return response.json().get("prices", [])
+        return []
+    except:
+        return []
+
+
+def detect_gap(prices):
+    if len(prices) < 2:
+        return None
+    open_price = prices[0]["openPrice"]["bid"]
+    sunday_open = prices[-1]["openPrice"]["bid"]
+    gap = sunday_open - open_price
+    gap_percent = (gap / open_price) * 100
+    return {
+        "friday_close": open_price,
+        "sunday_open": sunday_open,
+        "gap": gap,
+        "gap_percent": gap_percent
+    }
+
+
+def format_gap_message(market, gap_info):
+    direction = "📈 HAUSSIER" if gap_info["gap"] > 0 else "📉 BAISSIER"
+    return (
+        f"**{market}**\n"
+        f"Vendredi clôture : `{gap_info['friday_close']:.2f}`\n"
+        f"Dimanche ouverture : `{gap_info['sunday_open']:.2f}`\n"
+        f"Gap détecté : `{gap_info['gap']:.2f}` pts ({gap_info['gap_percent']:.2f}%) {direction}\n"
+        f"-----------------------------"
+    )
+
+
+def main():
+    if not authenticate_ig():
+        return
+
+    # Période : vendredi 21h à dimanche 23h (UTC)
+    today = datetime.datetime.utcnow()
+    last_friday = today - datetime.timedelta(days=(today.weekday() + 3) % 7 + 2)
+    friday = last_friday.replace(hour=20, minute=0, second=0, microsecond=0)
+    sunday = friday + datetime.timedelta(days=2, hours=4)
+
+    date_from = friday.strftime("%Y-%m-%dT%H:%M:%S")
+    date_to = sunday.strftime("%Y-%m-%dT%H:%M:%S")
+
+    markets = {
+        "FR40": "France 40",
+        "DE30": "Allemagne 40",
+        "US500": "US 500"
+    }
+
+    messages = ["📊 **Résumé des gaps détectés (IG Markets)**"]
+    for symbol, name in markets.items():
+        epic = get_epic_from_market(name)
+        if not epic:
+            messages.append(f"❌ {name} : Introuvable")
+            continue
+
+        prices = get_prices(epic, date_from, date_to)
+        gap_info = detect_gap(prices)
+        if gap_info:
+            messages.append(format_gap_message(name, gap_info))
+        else:
+            messages.append(f"⚠️ {name} : Pas assez de données pour détecter un gap")
+
+    final_message = "\n".join(messages)
+    log_to_discord(final_message)
+    print("✅ Résumé envoyé sur Discord.")
+
 
 if __name__ == "__main__":
-    try:
-        msg = build_message()
-        send_to_discord(msg)
-    except Exception as e:
-        print(f"❌ Erreur globale : {e}")
+    main()
