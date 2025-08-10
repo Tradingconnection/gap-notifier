@@ -13,6 +13,12 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
+      - name: Load .env file
+        run: |
+          if [ -f .env ]; then
+            export $(cat .env | xargs)
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
