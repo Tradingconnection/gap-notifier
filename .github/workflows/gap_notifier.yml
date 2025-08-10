@@ -1,21 +1,23 @@
-name: Weekly Gap Notifier (Yahoo)
+name: Weekly Gap Notifier
 
 on:
   schedule:
-    - cron: '0 15 * * 0'   # dim 17:00 Paris (été)
-  workflow_dispatch:
+    - cron: '0 15 * * 0'  # Tous les dimanches à 17:00 (heure de Paris en été)
+  workflow_dispatch:      # Lancement manuel
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      - name: Load .env file
+      # Charge le fichier .env dans l'environnement des étapes suivantes (robuste)
+      - name: Load .env into env
         run: |
           if [ -f .env ]; then
-            export $(grep -v '^#' .env | xargs)
+            sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> $GITHUB_ENV
           fi
 
       - name: Set up Python
@@ -25,18 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance pandas python-dotenv
+          pip install requests python-dotenv pycryptodome
 
-      - name: Run Yahoo Gap Notifier (dry-run)
-        env:
-          DRY_RUN: "1"                # 1 = n’envoie PAS sur Discord
-          OUTPUT_LOG: "gap_output.txt"
-        run: python gap_notifier_yf.py
-
-      - name: Upload log file
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gap-log
-          path: gap_output.txt
-          if-no-files-found: warn
+      - name: Run IG Gap Notifier
+        run: python gap_notifier_ig.py
