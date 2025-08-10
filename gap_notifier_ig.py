@@ -56,12 +56,12 @@ if __name__ == "__main__":
     with open(LOG_PATH, "w", encoding="utf-8") as _f:
         _f.write("")
 
-    # --- Garde-fou : poste seulement vers 17:10 Paris (tolérance ±10 min)
+    # --- Garde-fou : poste seulement autour de 17:10 Paris (tolérance ±30 min)
     paris_now = datetime.now(ZoneInfo("Europe/Paris"))
     if os.getenv("IGNORE_TIME_GUARD", "0") != "1":
         target = paris_now.replace(hour=17, minute=10, second=0, microsecond=0)
         delta_sec = abs((paris_now - target).total_seconds())
-        if delta_sec > 600:  # 10 minutes
+        if delta_sec > 1800:  # 30 minutes
             log(f"⏭️ Skip: il est {paris_now.strftime('%H:%M')} à Paris (pas ~17:10).")
             raise SystemExit(0)
 
