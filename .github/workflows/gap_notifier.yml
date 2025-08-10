@@ -18,6 +18,17 @@ jobs:
             sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> $GITHUB_ENV
           fi
 
+      - name: Show loaded env (masked)
+        shell: bash
+        run: |
+          echo "DRY_RUN=${DRY_RUN:-unset}"
+          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
+            echo "❌ DISCORD_WEBHOOK_URL is NOT set"
+            exit 1
+          else
+            echo "✅ DISCORD_WEBHOOK_URL is set (length: ${#DISCORD_WEBHOOK_URL})"
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
@@ -29,7 +40,7 @@ jobs:
 
       - name: Run Gap Notifier (Discord ON)
         env:
-          DRY_RUN: "0"                 # <- envoi Discord ACTIVÉ
+          DRY_RUN: "0"                 # envoi Discord ACTIVÉ
           OUTPUT_LOG: "gap_output.txt"
         run: python gap_notifier_ig.py
 
