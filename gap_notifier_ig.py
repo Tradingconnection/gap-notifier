@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 DRY_RUN  = os.getenv("DRY_RUN", "1") == "1"              # 0 = envoie sur Discord
 LOG_PATH = os.getenv("OUTPUT_LOG", "gap_output.txt")
-DISCORD_WEBHOOK_URL = os.getenv("https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx", "").strip()
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 
 # Libellés propres (sans tickers dans le message)
 SYMBOLS = {
