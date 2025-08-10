@@ -16,7 +16,7 @@ jobs:
       - name: Load .env file
         run: |
           if [ -f .env ]; then
-            export $(cat .env | xargs)
+            export $(grep -v '^#' .env | xargs)
           fi
 
       - name: Set up Python
