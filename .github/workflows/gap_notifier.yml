@@ -1,4 +1,4 @@
-name: Weekly Gap Notifier (Yahoo)
+name: Weekly Gap Notifier (Discord ON)
 
 on:
   schedule:
@@ -27,10 +27,10 @@ jobs:
         run: |
           pip install yfinance pandas requests python-dotenv
 
-      - name: Run Yahoo Gap Notifier (dry-run)
+      - name: Run Gap Notifier (Discord ON)
         env:
-          DRY_RUN: "1"                 # 1 = n’envoie PAS sur Discord
-          OUTPUT_LOG: "gap_output.txt"
+          DRY_RUN: "0"                 # <- ACTIVE l’envoi Discord
+          OUTPUT_LOG: "gap_output.txt" # on garde aussi le fichier pour les logs
         run: python gap_notifier_ig.py
 
       - name: Show result
@@ -38,7 +38,7 @@ jobs:
           echo "----- gap_output.txt -----"
           if [ -f gap_output.txt ]; then
             cat gap_output.txt
-          else
+          else:
             echo "gap_output.txt introuvable"
           fi
 
