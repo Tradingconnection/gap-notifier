@@ -74,8 +74,8 @@ if __name__ == "__main__":
     now_utc = datetime.now(timezone.utc)
     friday_d, monday_d, note = week_refs(now_utc)
 
-    header = f"📊 GAPS D’OUVERTURE – {(now_utc + timedelta(hours=2)).strftime('%d/%m/%Y')} (Yahoo, daily){note}\n"
-    log(header)
+    header = f"📊 GAPS D’OUVERTURE – {(now_utc + timedelta(hours=2)).strftime('%d/%m/%Y')} | Trading Connection{note}\n"
+
 
     lines = []
     for label, sym in SYMBOLS.items():
