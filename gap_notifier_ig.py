@@ -58,10 +58,17 @@ if __name__ == "__main__":
     # reset log
     with open(LOG_PATH, "w", encoding="utf-8") as _f: _f.write("")
 
+    # --- Garde-fou : ne poste que s'il est 17:00 à Paris (utile car deux crons été/hiver)
+    paris_now = datetime.now(ZoneInfo("Europe/Paris"))
+    if os.getenv("IGNORE_TIME_GUARD", "0") != "1":
+        if paris_now.hour != 17:
+            log(f"⏭️ Skip: il est {paris_now.strftime('%H:%M')} à Paris (pas 17:00).")
+            raise SystemExit(0)
+
     now_utc = datetime.now(timezone.utc)
     friday_d, monday_d = week_refs(now_utc)
 
-    today_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y")
+    today_paris = paris_now.strftime("%d/%m/%Y")
     header = f"📊 GAP D’OUVERTURE — Trading Connection | {today_paris}\n"
     log(header)
 
