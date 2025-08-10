@@ -1,20 +1,25 @@
 import os
 import json
+import base64
 import requests
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
-# -- Chargement du .env (utile localement ; sur Actions tu exportes déjà les vars) --
+# Crypto (RSA PKCS1 v1.5 pour le login chiffré IG)
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5
+
+# -- Chargement du .env (utile en local ; sur Actions on exporte déjà les vars) --
 load_dotenv()
 
 # ---- Variables d'environnement ----
 API_KEY = os.getenv("IG_API_KEY", "").strip()
-USERNAME = os.getenv("IG_IDENTIFIER", "").strip()   # ex: LUCAS2212 (pas l'email)
+USERNAME = os.getenv("IG_IDENTIFIER", "").strip()   # ex: LUCAS2212
 PASSWORD = os.getenv("IG_PASSWORD", "").strip()
 BASE_URL = os.getenv("IG_BASE_URL", "https://demo-api.ig.com/gateway/deal").strip()
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 
-# ---- EPICs IG (à ajuster si besoin selon ton compte) ----
+# ---- EPICs IG ----
 ASSETS = {
     "🪙 Or (Gold)": "CS.D.GC.MONTH1.IP",
     "🛢 Pétrole (USOIL)": "CC.D.CL.USS.IP",
@@ -25,13 +30,11 @@ ASSETS = {
 
 # ------------ Discord ------------
 def send_to_discord(content: str) -> None:
-    """Envoie un message simple sur Discord via webhook"""
     if not DISCORD_WEBHOOK_URL:
         print("❌ Webhook Discord manquant (DISCORD_WEBHOOK_URL).")
         return
     try:
         r = requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30)
-        # Webhook Discord renvoie généralement 204 No Content
         if r.status_code in (200, 204):
             print("✅ Message envoyé sur Discord")
         else:
@@ -39,13 +42,53 @@ def send_to_discord(content: str) -> None:
     except Exception as e:
         print(f"❌ Exception envoi Discord: {e}")
 
-# ------------ IG API ------------
+# ------------ IG API (login chiffré) ------------
+def get_encryption_key():
+    """Récupère la clé publique RSA et le timestamp d'IG pour chiffrer le mot de passe."""
+    url = f"{BASE_URL}/session/encryptionKey"
+    headers = {
+        "X-IG-API-KEY": API_KEY,
+        "Accept": "application/json",
+        "Version": "1",
+        "User-Agent": "gap-weekly-bot/1.0",
+    }
+    r = requests.get(url, headers=headers, timeout=30)
+    if r.status_code != 200:
+        try:
+            body = r.json()
+        except Exception:
+            body = {"raw": r.text}
+        send_to_discord(
+            "⚠️ **Récupération encryptionKey échouée**\n"
+            f"• HTTP: `{r.status_code}`\n"
+            f"• Réponse: ```json\n{json.dumps(body, ensure_ascii=False, indent=2)}\n```"
+        )
+        return None, None
+    data = r.json()
+    return data.get("encryptionKey"), data.get("timeStamp")
+
+def encrypt_password(password: str, time_stamp: str, modulus_b64: str) -> str:
+    """Chiffre `password|timeStamp` en RSA, encodé Base64 (PKCS1 v1.5)."""
+    # Le champ encryptionKey d'IG est une clé publique RSA encodée base64 DER
+    pub_der = base64.b64decode(modulus_b64)
+    rsa_key = RSA.import_key(pub_der)
+    cipher = PKCS1_v1_5.new(rsa_key)
+    plaintext = f"{password}|{time_stamp}".encode("utf-8")
+    encrypted = cipher.encrypt(plaintext)
+    return base64.b64encode(encrypted).decode("utf-8")
+
 def connect_ig():
     """
-    Connexion à IG.
+    Connexion à IG avec mot de passe chiffré.
     En cas d'échec, envoie un message détaillé sur Discord (HTTP + body).
     Retourne (CST, X-SECURITY-TOKEN) si OK, sinon (None, None).
     """
+    enc_key, ts = get_encryption_key()
+    if not enc_key or not ts:
+        return None, None
+
+    enc_pwd = encrypt_password(PASSWORD, ts, enc_key)
+
     url = f"{BASE_URL}/session"
     headers = {
         "X-IG-API-KEY": API_KEY,
@@ -54,7 +97,11 @@ def connect_ig():
         "Version": "2",
         "User-Agent": "gap-weekly-bot/1.0",
     }
-    payload = {"identifier": USERNAME, "password": PASSWORD}
+    payload = {
+        "identifier": USERNAME,
+        "password": enc_pwd,
+        "encryptedPassword": True
+    }
 
     try:
         r = requests.post(url, headers=headers, data=json.dumps(payload), timeout=30)
@@ -68,10 +115,9 @@ def connect_ig():
         if not cst or not xst:
             send_to_discord("⚠️ **Login IG réussi mais tokens manquants (CST/X-SECURITY-TOKEN)**.")
             return None, None
-        print("✅ Connexion IG réussie")
+        print("✅ Connexion IG réussie (mot de passe chiffré)")
         return cst, xst
 
-    # Erreur: on remonte le détail sur Discord
     try:
         body = r.json()
     except Exception:
@@ -79,9 +125,10 @@ def connect_ig():
 
     tips = (
         "\n**Pistes de résolution :**\n"
-        "• Vérifie que `IG_IDENTIFIER` est ton *pseudo* IG (ex: `LUCAS2212`), pas ton email.\n"
-        "• Assure-toi que la clé API correspond au bon environnement (DEMO ⇄ BASE_URL demo / LIVE ⇄ BASE_URL live).\n"
-        "• Si 2FA/OTP activé, valide la connexion API dans l'Espace Client IG (section API).\n"
+        "• Vérifie que `IG_IDENTIFIER` est bien ton pseudo IG (ex: `LUCAS2212`).\n"
+        "• Assure-toi d’utiliser le bon environnement (DEMO ⇄ BASE_URL demo / LIVE ⇄ BASE_URL live).\n"
+        "• Si 2FA/OTP activé, valide la connexion API depuis l’Espace Client IG (rubrique API).\n"
+        "• Si l’erreur persiste en DEMO, essaye de te connecter au site IG DEMO avec ces identifiants pour confirmer.\n"
     )
 
     send_to_discord(
@@ -94,11 +141,8 @@ def connect_ig():
     )
     return None, None
 
+# ------------ Récup prix ------------
 def fetch_prices(epic: str, start_iso: str, end_iso: str, cst: str, xst: str):
-    """
-    Récupère les chandelles minute pour un epic entre start et end.
-    Retourne la liste 'prices' (peut être vide) ou None si erreur.
-    """
     url = f"{BASE_URL}/prices/{epic}?resolution=MINUTE&from={start_iso}&to={end_iso}"
     headers = {
         "X-IG-API-KEY": API_KEY,
@@ -131,7 +175,6 @@ def fetch_prices(epic: str, start_iso: str, end_iso: str, cst: str, xst: str):
     return data.get("prices", [])
 
 def pick_friday_close(prices: list) -> float | None:
-    """Prend le dernier 'closePrice.bid' de la fenêtre de vendredi."""
     if not prices:
         return None
     for p in reversed(prices):
@@ -142,7 +185,6 @@ def pick_friday_close(prices: list) -> float | None:
     return None
 
 def pick_sunday_open(prices: list) -> float | None:
-    """Prend le premier 'openPrice.bid' de la fenêtre d'ouverture dimanche."""
     if not prices:
         return None
     for p in prices:
@@ -153,31 +195,25 @@ def pick_sunday_open(prices: list) -> float | None:
     return None
 
 def iso(dt: datetime) -> str:
-    """Format ISO sans microsecondes (UTC)."""
     return dt.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
 
+# ------------ Main ------------
 if __name__ == "__main__":
-    # Heure actuelle en UTC
     now_utc = datetime.now(timezone.utc)
-
-    # Titre (heure de Paris juste pour l'affichage)
-    paris_offset = 2 if now_utc.astimezone().dst() != timedelta(0) else 1  # simplifié
-    today_paris = (now_utc + timedelta(hours=paris_offset)).strftime("%d/%m/%Y")
+    # Affichage date (Paris)
+    today_paris = (now_utc + timedelta(hours=2)).strftime("%d/%m/%Y")  # simple offset été
 
     header = f"📊 **GAPS D’OUVERTURE – {today_paris}**\n"
     report = []
 
-    # Connexion IG
+    # Connexion IG (chiffrée)
     cst, xst = connect_ig()
     if not cst or not xst:
-        # On envoie quand même un message résumé (le détail du login a déjà été posté)
+        # Détail d’erreur déjà envoyé
         send_to_discord(header + "⚠️ Erreur connexion IG (voir détails ci-dessus).")
         raise SystemExit(1)
 
-    # Fenêtres horaires robustes (UTC)
-    # Vendredi: on prend 20:00 → 22:30 UTC et on choisit la dernière close
-    # Dimanche: on prend 21:55 → 22:15 UTC et on choisit la première open
-    # (IG rouvre typiquement ~22:00 UTC le dimanche)
+    # Fenêtres horaires (UTC) robustes
     weekday = now_utc.weekday()  # 0=Mon ... 6=Sun
     last_friday = now_utc - timedelta(days=(weekday - 4) % 7)
     friday_start = last_friday.replace(hour=20, minute=0, second=0, microsecond=0)
@@ -192,7 +228,6 @@ if __name__ == "__main__":
     sunday_from = iso(sunday_start)
     sunday_to   = iso(sunday_end)
 
-    # Pour chaque actif: récupère les fenêtres, calcule le gap
     for name, epic in ASSETS.items():
         fri_prices = fetch_prices(epic, friday_from, friday_to, cst, xst)
         sun_prices = fetch_prices(epic, sunday_from, sunday_to, cst, xst)
@@ -202,7 +237,7 @@ if __name__ == "__main__":
 
         if close_fri is not None and open_sun is not None:
             gap = open_sun - close_fri
-            gap_pct = (gap / close_fri) * 100 if close_fri != 0 else 0.0
+            gap_pct = (gap / close_fri) * 100 if close_fri else 0.0
             sign = "🟢" if gap > 0 else "🔴" if gap < 0 else "⚪"
             report.append(f"{name} : {sign} {gap:.2f} ({gap_pct:.2f}%)")
         else:
@@ -214,6 +249,4 @@ if __name__ == "__main__":
             detail = " / ".join(reason) if reason else "donnée manquante"
             report.append(f"{name} : ⚠️ Données indisponibles ({detail})")
 
-    # Envoi Discord
-    message = header + "\n".join(report)
-    send_to_discord(message)
+    send_to_discord(header + "\n".join(report))
