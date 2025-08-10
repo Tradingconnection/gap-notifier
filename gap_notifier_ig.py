@@ -31,10 +31,7 @@ def week_refs(now_utc: datetime) -> tuple[date, date]:
        Si on est avant la bougie daily de lundi (00:30 UTC), on prend la semaine précédente."""
     monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()
     cutoff = datetime.combine(monday_this, datetime.min.time(), tzinfo=timezone.utc) + timedelta(minutes=30)
-    if now_utc < cutoff:
-        monday = monday_this - timedelta(days=7)
-    else:
-        monday = monday_this
+    monday = monday_this - timedelta(days=7) if now_utc < cutoff else monday_this
     friday = monday - timedelta(days=3)
     return friday, monday
 
@@ -56,13 +53,16 @@ def friday_close_monday_open(df: pd.DataFrame, friday: date, monday: date) -> tu
 
 if __name__ == "__main__":
     # reset log
-    with open(LOG_PATH, "w", encoding="utf-8") as _f: _f.write("")
+    with open(LOG_PATH, "w", encoding="utf-8") as _f:
+        _f.write("")
 
-    # --- Garde-fou : ne poste que s'il est 17:10 à Paris ---
+    # --- Garde-fou : poste seulement vers 17:10 Paris (tolérance ±10 min)
     paris_now = datetime.now(ZoneInfo("Europe/Paris"))
     if os.getenv("IGNORE_TIME_GUARD", "0") != "1":
-        if not (paris_now.hour == 17 and paris_now.minute == 10):
-            log(f"⏭️ Skip: il est {paris_now.strftime('%H:%M')} à Paris (pas 17:10).")
+        target = paris_now.replace(hour=17, minute=10, second=0, microsecond=0)
+        delta_sec = abs((paris_now - target).total_seconds())
+        if delta_sec > 600:  # 10 minutes
+            log(f"⏭️ Skip: il est {paris_now.strftime('%H:%M')} à Paris (pas ~17:10).")
             raise SystemExit(0)
 
     now_utc = datetime.now(timezone.utc)
