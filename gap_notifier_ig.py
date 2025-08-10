@@ -12,7 +12,7 @@ DRY_RUN  = os.getenv("DRY_RUN", "1") == "1"              # 0 = envoie sur Discor
 LOG_PATH = os.getenv("OUTPUT_LOG", "gap_output.txt")
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
 
-# Libellés (sans tickers dans le message)
+# Libellés propres (sans tickers dans le message)
 SYMBOLS = {
     "🪙 Gold":      "GC=F",
     "🛢 Oil":       "CL=F",
@@ -27,16 +27,16 @@ def log(msg: str):
     print(msg)
 
 def week_refs(now_utc: datetime) -> tuple[date, date]:
-    """(vendredi, lundi) pour gap = Open(lun) - Close(ven).
-       Si on est avant la daily de lundi (00:30 UTC), on prend la semaine précédente."""
-    monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()
+    """Retourne (vendredi, lundi) pour gap = Open(lun) - Close(ven).
+       Si on est avant la bougie daily de lundi (00:30 UTC), on prend la semaine précédente."""
+    monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()  # lundi courant
     cutoff = datetime.combine(monday_this, datetime.min.time(), tzinfo=timezone.utc) + timedelta(minutes=30)
     monday = monday_this - timedelta(days=7) if now_utc < cutoff else monday_this
     friday = monday - timedelta(days=3)
     return friday, monday
 
 def daily_ohlc(ticker: str, start_d: date, end_d: date) -> pd.DataFrame:
-    """Daily autour de ven & lun pour être sûr d’avoir les deux points."""
+    """Télécharge les daily autour de ven & lun pour être sûr d’avoir les deux points."""
     start = start_d - timedelta(days=3)
     end   = end_d + timedelta(days=1)
     df = yf.download(tickers=ticker, interval="1d", start=start.isoformat(), end=end.isoformat(), progress=False)
@@ -53,21 +53,12 @@ def friday_close_monday_open(df: pd.DataFrame, friday: date, monday: date) -> tu
 
 if __name__ == "__main__":
     # reset log
-    with open(LOG_PATH, "w", encoding="utf-8") as _f:
-        _f.write("")
-
-    # Garde-fou : envoi vers 17:10 Paris (tolérance ±30 min)
-    paris_now = datetime.now(ZoneInfo("Europe/Paris"))
-    target = paris_now.replace(hour=17, minute=10, second=0, microsecond=0)
-    delta_sec = abs((paris_now - target).total_seconds())
-    if delta_sec > 1800:  # 30 minutes
-        log(f"⏭️ Skip: il est {paris_now.strftime('%H:%M')} à Paris (pas ~17:10).")
-        raise SystemExit(0)
+    with open(LOG_PATH, "w", encoding="utf-8") as _f: _f.write("")
 
     now_utc = datetime.now(timezone.utc)
     friday_d, monday_d = week_refs(now_utc)
 
-    today_paris = paris_now.strftime("%d/%m/%Y")
+    today_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y")
     header = f"📊 GAP D’OUVERTURE — Trading Connection | {today_paris}\n"
     log(header)
 
@@ -90,8 +81,8 @@ if __name__ == "__main__":
     body = "\n".join(lines)
     log(body)
 
-    # Envoi Discord
+    # Envoi Discord (uniquement si DRY_RUN=0)
     if not DRY_RUN and DISCORD_WEBHOOK_URL:
         import requests
-        try:
-            r = requests.post(DISCORD_WEBHOOK_URL, json={"content": header + body},
+        r = requests.post(DISCORD_WEBHOOK_URL, json={"content": header + body}, timeout=30)
+        log(f"Discord HTTP {r.status_code} {r.text[:150] if r.text else ''}")
