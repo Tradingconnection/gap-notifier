@@ -29,9 +29,18 @@ jobs:
 
       - name: Run Yahoo Gap Notifier (dry-run)
         env:
-          DRY_RUN: "1"                 # 1 = pas d'envoi Discord
+          DRY_RUN: "1"                 # 1 = n’envoie PAS sur Discord
           OUTPUT_LOG: "gap_output.txt"
         run: python gap_notifier_ig.py
+
+      - name: Show result
+        run: |
+          echo "----- gap_output.txt -----"
+          if [ -f gap_output.txt ]; then
+            cat gap_output.txt
+          else
+            echo "gap_output.txt introuvable"
+          fi
 
       - name: Upload log file
         if: always()
