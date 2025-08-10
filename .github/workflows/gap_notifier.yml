@@ -2,7 +2,10 @@ name: Weekly Gap Notifier (Discord ON)
 
 on:
   schedule:
-    - cron: '0 15 * * 0'   # dim 17:00 Paris (été)
+    # Été (UTC+2) : 15:00 UTC = 17:00 Paris
+    - cron: '0 15 * * 0'
+    # Hiver (UTC+1) : 16:00 UTC = 17:00 Paris
+    - cron: '0 16 * * 0'
   workflow_dispatch:
 
 jobs:
@@ -50,7 +53,7 @@ jobs:
           echo "----- gap_output.txt -----"
           if [ -f gap_output.txt ]; then
             cat gap_output.txt
-          else
+          else:
             echo "gap_output.txt introuvable"
           fi
 
