@@ -26,7 +26,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests python-dotenv
+          pip install requests python-dotenv pycryptodome
 
       - name: Run IG Gap Notifier
         run: python gap_notifier_ig.py
