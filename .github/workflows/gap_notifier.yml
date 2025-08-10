@@ -1,8 +1,8 @@
-name: Weekly Gap Notifier (FXCM)
+name: Weekly Gap Notifier (Yahoo)
 
 on:
   schedule:
-    - cron: '0 15 * * 0'   # Tous les dimanches à 17:00 (Paris, été)
+    - cron: '0 15 * * 0'   # dim 17:00 Paris (été)
   workflow_dispatch:
 
 jobs:
@@ -25,13 +25,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install fxcmpy python-dotenv pandas requests
+          pip install yfinance pandas python-dotenv
 
-      - name: Run FXCM Gap Notifier (dry-run)
+      - name: Run Yahoo Gap Notifier (dry-run)
         env:
-          DRY_RUN: "1"
+          DRY_RUN: "1"                # 1 = n’envoie PAS sur Discord
           OUTPUT_LOG: "gap_output.txt"
-        run: python gap_notifier_fxcm.py
+        run: python gap_notifier_yf.py
 
       - name: Upload log file
         if: always()
