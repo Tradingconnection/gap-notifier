@@ -11,10 +11,10 @@ LOG_PATH = os.getenv("OUTPUT_LOG", "gap_output.txt")
 DISCORD_WEBHOOK_URL = os.getenv("https://discord.com/api/webhooks/1396818376852242495/m-F9GOn6oiqALUjqP6GZ9xycTk-pV9ie2fGA9KDk3J6aKxKQVKJZzipG2l0zAw5fNAMx", "").strip()
 
 SYMBOLS = {
-    "🪙 Gold (fut)": "GC=F",   # CME Gold futures
-    "🛢 WTI (fut)":  "CL=F",   # NYMEX WTI futures
-    "📈 Nasdaq (fut)": "NQ=F", # CME E-mini Nasdaq-100
-    "🏦 Dow (fut)":     "YM=F",# CBOT Mini Dow
+    "🪙 Gold (fut)": "GC=F",    # CME Gold futures
+    "🛢 WTI (fut)":  "CL=F",    # NYMEX WTI futures
+    "📈 Nasdaq (fut)": "NQ=F",  # CME E-mini Nasdaq-100
+    "🏦 Dow (fut)":     "YM=F", # CBOT Mini Dow
     "🇩🇪 GER40 (cash)": "^GDAXI" # DAX cash (approx pour GER40)
 }
 
@@ -25,7 +25,6 @@ def log(msg: str):
 
 def first_open(df: pd.DataFrame) -> float | None:
     if df is None or df.empty: return None
-    # yfinance renvoie O/H/L/C ; on prend le premier Open
     return float(df["Open"].iloc[0])
 
 def last_close(df: pd.DataFrame) -> float | None:
@@ -33,11 +32,9 @@ def last_close(df: pd.DataFrame) -> float | None:
     return float(df["Close"].iloc[-1])
 
 def m1_between(ticker: str, start_utc: datetime, end_utc: datetime) -> pd.DataFrame:
-    # yfinance minute => period max 7d ; on télécharge 7d et on filtre
     df = yf.download(tickers=ticker, interval="1m", period="7d", progress=False)
     if df is None or df.empty:
         return pd.DataFrame()
-    # index tz-naive en UTC côté yfinance -> convertissons proprement
     df.index = pd.to_datetime(df.index, utc=True)
     return df.loc[(df.index >= start_utc) & (df.index <= end_utc)]
 
@@ -88,11 +85,11 @@ if __name__ == "__main__":
             if open_mon  is None: miss.append("open dim./lun.")
             lines.append(f"{label} : ⚠️ Données indisponibles ({' & '.join(miss)}) — {symbol}")
 
-    log("\n".join(lines))
+    body = "\n".join(lines)
+    log(body)
 
-    # Envoi Discord facultatif (désactivé si DRY_RUN=1)
-    if not DRY_RUN and os.getenv("DISCORD_WEBHOOK_URL"):
+    # Envoi Discord (désactivé si DRY_RUN=1)
+    if not DRY_RUN and DISCORD_WEBHOOK_URL:
         import requests
-        content = header + "\n".join(lines)
-        r = requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=30)
+        r = requests.post(DISCORD_WEBHOOK_URL, json={"content": header + body}, timeout=30)
         print("Discord:", r.status_code, r.text[:200] if r.text else "")
