@@ -13,6 +13,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Load .env into env
+        shell: bash
         run: |
           if [ -f .env ]; then
             sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> $GITHUB_ENV
@@ -21,12 +22,23 @@ jobs:
       - name: Show loaded env (masked)
         shell: bash
         run: |
-          echo "DRY_RUN=${DRY_RUN:-unset}"
           if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
             echo "❌ DISCORD_WEBHOOK_URL is NOT set"
             exit 1
           else
             echo "✅ DISCORD_WEBHOOK_URL is set (length: ${#DISCORD_WEBHOOK_URL})"
+          fi
+
+      - name: Ping Discord webhook (debug)
+        shell: bash
+        run: |
+          code=$(curl -sS -o /dev/null -w "%{http_code}\n" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"✅ Webhook OK (test ping)"}' "${DISCORD_WEBHOOK_URL}")
+          echo "Discord ping HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "❌ Webhook ping failed"
+            exit 1
           fi
 
       - name: Set up Python
