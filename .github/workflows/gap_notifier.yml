@@ -29,18 +29,6 @@ jobs:
             echo "✅ DISCORD_WEBHOOK_URL is set (length: ${#DISCORD_WEBHOOK_URL})"
           fi
 
-      - name: Ping Discord webhook (debug)
-        shell: bash
-        run: |
-          code=$(curl -sS -o /dev/null -w "%{http_code}\n" \
-            -H "Content-Type: application/json" \
-            -d '{"content":"✅ Webhook OK (test ping)"}' "${DISCORD_WEBHOOK_URL}")
-          echo "Discord ping HTTP $code"
-          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
-            echo "❌ Webhook ping failed"
-            exit 1
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
