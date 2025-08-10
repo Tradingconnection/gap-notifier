@@ -22,16 +22,6 @@ jobs:
             sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> $GITHUB_ENV
           fi
 
-      - name: Show loaded env (masked)
-        shell: bash
-        run: |
-          if [ -z "${DISCORD_WEBHOOK_URL}" ]; then
-            echo "❌ DISCORD_WEBHOOK_URL is NOT set"
-            exit 1
-          else
-            echo "✅ DISCORD_WEBHOOK_URL is set (length: ${#DISCORD_WEBHOOK_URL})"
-          fi
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
