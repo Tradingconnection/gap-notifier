@@ -27,10 +27,8 @@ def log(msg: str):
     print(msg)
 
 def week_refs(now_utc: datetime) -> tuple[date, date]:
-    """
-    Retourne (vendredi, lundi) pour calculer gap = Open(lun) - Close(ven).
-    Si on est avant dispo de la bougie daily de lundi (00:30 UTC), on prend la semaine précédente.
-    """
+    """Retourne (vendredi, lundi) pour gap = Open(lun) - Close(ven).
+       Si on est avant la bougie daily de lundi (00:30 UTC), on prend la semaine précédente."""
     monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()  # lundi de la semaine courante
     cutoff = datetime.combine(monday_this, datetime.min.time(), tzinfo=timezone.utc) + timedelta(minutes=30)
     if now_utc < cutoff:
@@ -41,15 +39,12 @@ def week_refs(now_utc: datetime) -> tuple[date, date]:
     return friday, monday
 
 def daily_ohlc(ticker: str, start_d: date, end_d: date) -> pd.DataFrame:
-    """
-    Télécharge les daily autour de ven & lun pour être sûr d’avoir les deux points.
-    """
+    """Télécharge les daily autour de ven & lun pour être sûr d’avoir les deux points."""
     start = start_d - timedelta(days=3)
     end   = end_d + timedelta(days=1)
     df = yf.download(tickers=ticker, interval="1d", start=start.isoformat(), end=end.isoformat(), progress=False)
     if df is None or df.empty:
         return pd.DataFrame()
-    # index en dates (YYYY-MM-DD) pour accéder par df.loc[date]
     idx = pd.to_datetime(df.index, utc=True)
     df.index = idx.date
     return df
@@ -92,4 +87,8 @@ if __name__ == "__main__":
     # Envoi Discord (uniquement si DRY_RUN=0)
     if not DRY_RUN and DISCORD_WEBHOOK_URL:
         import requests
-        requests.post(DISCORD_WEBHOOK_URL, json={"content": header + body}, timeout=30)
+        try:
+            r = requests.post(DISCORD_WEBHOOK_URL, json={"content": header + body}, timeout=30)
+            log(f"Discord HTTP {r.status_code} {r.text[:150] if r.text else ''}")
+        except Exception as e:
+            log(f"Discord exception: {e}")
