@@ -13,7 +13,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
 
-      # Charge le fichier .env dans l'environnement des étapes suivantes (robuste)
+      # Charge le .env proprement dans l'env des étapes suivantes
       - name: Load .env into env
         run: |
           if [ -f .env ]; then
@@ -27,7 +27,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests python-dotenv pycryptodome
+          pip install requests python-dotenv pycryptodome pandas
 
       - name: Run IG Gap Notifier
         run: python gap_notifier_ig.py
