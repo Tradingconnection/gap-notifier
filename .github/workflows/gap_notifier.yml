@@ -3,12 +3,11 @@ name: Weekly Gap Notifier
 on:
   schedule:
     - cron: '0 15 * * 0'  # Tous les dimanches à 17h (heure de Paris = UTC+2 en été)
-  workflow_dispatch:  # Permet d'exécuter manuellement
+  workflow_dispatch:
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -28,5 +27,16 @@ jobs:
         run: |
           pip install requests python-dotenv pycryptodome
 
-      - name: Run IG Gap Notifier
+      - name: Run IG Gap Notifier (dry-run, pas de Discord)
+        env:
+          DRY_RUN: "1"
+          OUTPUT_LOG: "gap_output.txt"
         run: python gap_notifier_ig.py
+
+      - name: Upload log file
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gap-log
+          path: gap_output.txt
+          if-no-files-found: warn
