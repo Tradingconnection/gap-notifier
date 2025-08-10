@@ -1,11 +1,11 @@
-name: Weekly Gap Notifier (Discord ON)
+name: Daily Gap Notifier (Discord ON)
 
 on:
   schedule:
-    # Été (UTC+2) : 15:00 UTC = 17:00 Paris
-    - cron: '0 15 * * 0'
-    # Hiver (UTC+1) : 16:00 UTC = 17:00 Paris
-    - cron: '0 16 * * 0'
+    # Été (UTC+2) : 15:10 UTC = 17:10 Paris
+    - cron: '10 15 * * *'
+    # Hiver (UTC+1) : 16:10 UTC = 17:10 Paris
+    - cron: '10 16 * * *'
   workflow_dispatch:
 
 jobs:
@@ -43,7 +43,7 @@ jobs:
 
       - name: Run Gap Notifier (Discord ON)
         env:
-          DRY_RUN: "0"                 # envoi Discord ACTIVÉ
+          DRY_RUN: "0"
           OUTPUT_LOG: "gap_output.txt"
         run: python gap_notifier_ig.py
 
@@ -53,7 +53,7 @@ jobs:
           echo "----- gap_output.txt -----"
           if [ -f gap_output.txt ]; then
             cat gap_output.txt
-          else:
+          else
             echo "gap_output.txt introuvable"
           fi
 
