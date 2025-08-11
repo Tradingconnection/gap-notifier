@@ -2,10 +2,7 @@ name: Weekly Gap Notifier (Discord ON)
 
 on:
   schedule:
-    # Été (UTC+2) : 15:00 UTC = 17:00 Paris
-    - cron: '0 15 * * 0'
-    # Hiver (UTC+1) : 16:00 UTC = 17:00 Paris
-    - cron: '0 16 * * 0'
+    - cron: '0 15 * * 0'   # 15:00 UTC chaque dimanche (≈ 17:00 Paris en été) – un seul run hebdo
   workflow_dispatch:
 
 jobs:
