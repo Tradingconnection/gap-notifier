@@ -4,6 +4,9 @@ on:
   schedule:
     # DIMANCHE 22:05 UTC (≈ 00:05 lundi Europe/Paris en été)
     - cron: '5 22 * * 0'
+  # tu peux garder le déclenchement manuel, mais
+  # ATTENTION: si tu lances avant 22:00 UTC le dimanche,
+  # le script ne postera volontairement rien.
   workflow_dispatch:
 
 jobs:
@@ -18,7 +21,6 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f .env ]; then
-            # charge les lignes non commentées dans l'env
             sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> "$GITHUB_ENV"
           fi
 
@@ -37,7 +39,7 @@ jobs:
       - name: Run Gap Notifier (Discord ON)
         shell: bash
         env:
-          DRY_RUN: "0"                    # 0 => envoi Discord activé
+          DRY_RUN: "0"            # 0 => envoi Discord activé
           OUTPUT_LOG: "gap_output.txt"
         run: |
           set -euo pipefail
