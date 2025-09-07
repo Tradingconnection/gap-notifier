@@ -16,8 +16,11 @@ load_dotenv()
 DRY_RUN  = os.getenv("DRY_RUN", "1") == "1"
 LOG_PATH = os.getenv("OUTPUT_LOG", "gap_output.txt")
 
-# Laisse ton .env avec: DISCORD_WEBHOOK_URL=...
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+# Accepte DEUX noms possibles pour le webhook
+DISCORD_WEBHOOK_URL = (
+    os.getenv("DISCORD_WEBHOOK_URL", "").strip()
+    or os.getenv("DISCORD_WEBHOOK", "").strip()
+)
 
 # Libellés → tickers (on garde tes choix)
 SYMBOLS = {
@@ -37,31 +40,19 @@ def log(msg: str):
 
 def is_before_globex_open(now_utc: datetime) -> bool:
     """
-    Renvoie True si on est DIMANCHE avant ~22:00 UTC (ou avant lundi).
-    Globex ré-ouvre le dimanche vers 22:00 UTC.
+    True si DIMANCHE avant 22:00 UTC (Globex ré-ouvre vers 22:00 UTC).
     """
-    # dimanche = 6
-    if now_utc.weekday() == 6 and now_utc.hour < 22:
-        return True
-    # tout autre jour: on considère "ouvert" pour la daily du lundi et suivants
-    return False
+    return now_utc.weekday() == 6 and now_utc.hour < 22
 
 def week_refs(now_utc: datetime) -> tuple[date, date]:
     """
     Retourne (vendredi, lundi) pour GAP = Open(lun) - Close(ven).
-
-    On considère la "nouvelle semaine" à partir de l'ouverture Globex:
-    DIMANCHE ~22:00 UTC. Avant 22:00 UTC dimanche -> semaine précédente.
+    On bascule sur la semaine 'courante' à partir de DIMANCHE 22:00 UTC.
     """
     monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()
     monday_midnight_utc = datetime.combine(monday_this, datetime.min.time(), tzinfo=timezone.utc)
     globex_cutoff = monday_midnight_utc - timedelta(hours=2)  # dimanche 22:00 UTC
-
-    if now_utc >= globex_cutoff:
-        monday = monday_this
-    else:
-        monday = monday_this - timedelta(days=7)
-
+    monday = monday_this if now_utc >= globex_cutoff else (monday_this - timedelta(days=7))
     friday = monday - timedelta(days=3)
     return friday, monday
 
@@ -100,7 +91,7 @@ def friday_close_monday_open(df: pd.DataFrame, friday: date, monday: date) -> tu
 
 def post_to_discord(content: str):
     if not DISCORD_WEBHOOK_URL:
-        log("Avertissement: DISCORD_WEBHOOK_URL non défini. Envoi désactivé.")
+        log("Avertissement: webhook non défini (DISCORD_WEBHOOK_URL ou DISCORD_WEBHOOK). Envoi désactivé.")
         return 0
     try:
         import requests
@@ -119,16 +110,22 @@ if __name__ == "__main__":
         _f.write("")
 
     now_utc = datetime.now(timezone.utc)
+    paris_now_str = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y %H:%M")
 
-    # 1) GARDE : si on est dimanche avant 22:00 UTC -> NE PAS POSTER (évite les messages "open lun.")
+    # 1) Si on est dimanche avant 22:00 UTC, on POSTE quand même un message clair
     if is_before_globex_open(now_utc):
-        paris_now = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y %H:%M")
-        log(f"[SKIP] Marchés Globex pas encore ouverts (UTC {now_utc:%Y-%m-%d %H:%M}). "
-            f"Exécution manuelle détectée avant ouverture. Aucune publication Discord. "
-            f"Heure locale Paris: {paris_now}")
+        note = (f"⚠️ Marchés Globex pas encore ouverts.\n"
+                f"⏰ Réouverture ~22:00 UTC (≈ { (datetime.now(ZoneInfo('Europe/Paris')) + timedelta(hours=(22 - now_utc.hour))).strftime('%H:%M') } Paris si le lancement est immédiat).\n"
+                f"Relance planifiée automatique à 22:05 UTC.\n"
+                f"(Heure locale actuelle : {paris_now_str})")
+        log(note)
+        if not DRY_RUN:
+            post_to_discord("📊 GAP D’OUVERTURE — Trading Connection\n" + note)
+        else:
+            log("DRY_RUN=1 : aucun envoi Discord (note pré-ouverture).")
         sys.exit(0)
 
-    # 2) Calcul normal du GAP (on est >= 22:00 UTC dimanche, ou un autre jour)
+    # 2) Calcul normal du GAP
     friday_d, monday_d = week_refs(now_utc)
 
     today_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y")
@@ -138,10 +135,6 @@ if __name__ == "__main__":
     lines = []
     for label, sym in SYMBOLS.items():
         df = daily_ohlc(sym, friday_d, monday_d)
-        # Debug light (utile si besoin)
-        # log(f"[{label}] index: {sorted([d.isoformat() for d in df.index]) if not df.empty else '—'}  "
-        #     f"ven={friday_d.isoformat()} lun={monday_d.isoformat()}")
-
         close_fri, open_mon = friday_close_monday_open(df, friday_d, monday_d)
 
         if close_fri is not None and open_mon is not None:
@@ -150,7 +143,6 @@ if __name__ == "__main__":
             sign = "🟢" if gap > 0 else "🔴" if gap < 0 else "⚪"
             lines.append(f"{label} : {sign} {gap:.2f} ({pct:.2f}%)")
         else:
-            # Cas manquants avant ouverture / données pas encore publiées (peut se produire pour ^GDAXI)
             if open_mon is None:
                 lines.append(f"{label} : ⚠️ Données indisponibles (open lun.)")
             else:
