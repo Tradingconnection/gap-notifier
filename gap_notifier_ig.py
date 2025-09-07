@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 from datetime import datetime, timedelta, timezone, date
 from zoneinfo import ZoneInfo
 import pandas as pd
@@ -12,33 +11,37 @@ from dotenv import load_dotenv
 # ===================== Config =====================
 load_dotenv()
 
-DRY_RUN   = os.getenv("DRY_RUN", "1") == "1"          # 0 => envoi Discord
-FORCE_SEND = os.getenv("FORCE_SEND", "0") == "1"      # 1 => envoi même avant 22:00 UTC
-LOG_PATH  = os.getenv("OUTPUT_LOG", "gap_output.txt")
+# 0 = envoi Discord, 1 = pas d'envoi (test)
+DRY_RUN  = os.getenv("DRY_RUN", "1") == "1"
+LOG_PATH = os.getenv("OUTPUT_LOG", "gap_output.txt")
 
+# Webhook: accepte DISCORD_WEBHOOK_URL ou DISCORD_WEBHOOK
 DISCORD_WEBHOOK_URL = (
     os.getenv("DISCORD_WEBHOOK_URL", "").strip()
     or os.getenv("DISCORD_WEBHOOK", "").strip()
 )
 
+# Libellés → tickers (tes choix)
 SYMBOLS = {
-    "🪙 Gold":      "GC=F",
-    "🛢 Oil":       "CL=F",
-    "📈 Nasdaq":    "NQ=F",
-    "🏦 Dow Jones": "YM=F",
-    "🇩🇪 GER40":    "^GDAXI",
+    "🪙 Gold":      "GC=F",    # COMEX Gold futures
+    "🛢 Oil":       "CL=F",    # WTI futures
+    "📈 Nasdaq":    "NQ=F",    # E-mini Nasdaq (futures)
+    "🏦 Dow Jones": "YM=F",    # E-mini Dow (futures)
+    "🇩🇪 GER40":    "^GDAXI",  # DAX cash
 }
+
+# ===================== Utils =====================
 
 def log(msg: str):
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(msg + ("\n" if not msg.endswith("\n") else ""))
     print(msg)
 
-def is_before_globex_open(now_utc: datetime) -> bool:
-    # Dimanche (6) avant 22:00 UTC => pas d'open Monday sur les futures
-    return now_utc.weekday() == 6 and now_utc.hour < 22
-
 def week_refs(now_utc: datetime) -> tuple[date, date]:
+    """
+    GAP = Open(lun) - Close(ven).
+    On bascule sur la semaine 'courante' à partir de DIMANCHE 22:00 UTC.
+    """
     monday_this = (now_utc - timedelta(days=now_utc.weekday())).date()
     monday_midnight_utc = datetime.combine(monday_this, datetime.min.time(), tzinfo=timezone.utc)
     globex_cutoff = monday_midnight_utc - timedelta(hours=2)  # dimanche 22:00 UTC
@@ -71,9 +74,34 @@ def friday_close_monday_open(df: pd.DataFrame, friday: date, monday: date) -> tu
     o_mon = float(df.loc[monday, "Open"])  if monday in df.index else None
     return c_fri, o_mon
 
+def last_price_fallback(ticker: str) -> float | None:
+    """
+    Récupère un dernier prix 'indicatif' si l'open Monday n'existe pas encore.
+    On tente d'abord fast_info.last_price, puis un intraday court.
+    """
+    try:
+        tk = yf.Ticker(ticker)
+        # 1) fast_info.last_price
+        try:
+            lp = float(getattr(tk.fast_info, "last_price"))
+            if lp and lp == lp:  # not NaN
+                return lp
+        except Exception:
+            pass
+        # 2) intraday 5m sur 1 jour (si session ouverte)
+        try:
+            intr = tk.history(period="1d", interval="5m")
+            if intr is not None and not intr.empty:
+                return float(intr["Close"].iloc[-1])
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return None
+
 def post_to_discord(content: str):
     if not DISCORD_WEBHOOK_URL:
-        log("Webhook Discord absent (DISCORD_WEBHOOK_URL / DISCORD_WEBHOOK).")
+        log("Webhook Discord absent (DISCORD_WEBHOOK_URL ou DISCORD_WEBHOOK).")
         return 0
     try:
         import requests
@@ -84,24 +112,16 @@ def post_to_discord(content: str):
         log(f"Erreur d'envoi Discord: {e}")
         return -1
 
+# ===================== Main =====================
+
 if __name__ == "__main__":
     # Reset log
     with open(LOG_PATH, "w", encoding="utf-8") as _f:
         _f.write("")
 
-    # Infos debug utiles
-    log(f"DEBUG DRY_RUN={int(DRY_RUN)} FORCE_SEND={int(FORCE_SEND)} "
-        f"WEBHOOK_SET={'yes' if bool(DISCORD_WEBHOOK_URL) else 'no'}")
-
     now_utc = datetime.now(timezone.utc)
-
-    # Garde anti-préouverture (contournable par FORCE_SEND=1)
-    if is_before_globex_open(now_utc) and not FORCE_SEND:
-        paris_now = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y %H:%M")
-        log(f"[SKIP] Avant ouverture Globex (UTC {now_utc:%Y-%m-%d %H:%M}) — aucune publication Discord. (Paris {paris_now})")
-        sys.exit(0)
-
     friday_d, monday_d = week_refs(now_utc)
+
     today_paris = datetime.now(ZoneInfo("Europe/Paris")).strftime("%d/%m/%Y")
     header = f"📊 GAP D’OUVERTURE — Trading Connection | {today_paris}\n"
     log(header)
@@ -112,19 +132,31 @@ if __name__ == "__main__":
         close_fri, open_mon = friday_close_monday_open(df, friday_d, monday_d)
 
         if close_fri is not None and open_mon is not None:
+            # Cas idéal : Monday open dispo
             gap = open_mon - close_fri
             pct = (gap / close_fri) * 100 if close_fri else 0.0
             sign = "🟢" if gap > 0 else "🔴" if gap < 0 else "⚪"
             lines.append(f"{label} : {sign} {gap:.2f} ({pct:.2f}%)")
         else:
-            if open_mon is None:
-                lines.append(f"{label} : ⚠️ Données indisponibles (open lun.)")
+            # Fallback : utiliser un dernier prix indicatif si possible
+            last_px = last_price_fallback(sym)
+            if close_fri is not None and last_px is not None:
+                gap = last_px - close_fri
+                pct = (gap / close_fri) * 100 if close_fri else 0.0
+                sign = "🟢" if gap > 0 else "🔴" if gap < 0 else "⚪"
+                # (i) on ne marque pas "indicatif" pour rester fidèle à ton format demandé
+                lines.append(f"{label} : {sign} {gap:.2f} ({pct:.2f}%)")
             else:
-                lines.append(f"{label} : ⚠️ Données indisponibles (close ven.)")
+                # Dernier recours
+                miss = []
+                if close_fri is None: miss.append("close ven.")
+                if open_mon  is None: miss.append("open lun.")
+                lines.append(f"{label} : ⚠️ Données indisponibles ({' & '.join(miss)})")
 
     body = "\n".join(lines)
     log(body)
 
+    # Envoi Discord (uniquement si DRY_RUN=0)
     if not DRY_RUN:
         post_to_discord(header + body)
     else:
