@@ -4,9 +4,7 @@ on:
   schedule:
     # DIMANCHE 22:05 UTC (≈ 00:05 lundi Europe/Paris en été)
     - cron: '5 22 * * 0'
-  # tu peux garder le déclenchement manuel, mais
-  # ATTENTION: si tu lances avant 22:00 UTC le dimanche,
-  # le script ne postera volontairement rien.
+  # Tu peux lancer manuellement quand tu veux : avec le fallback, un chiffre sortira quand même.
   workflow_dispatch:
 
 jobs:
