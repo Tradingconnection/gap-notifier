@@ -2,7 +2,7 @@ name: Weekly Gap Notifier (Discord ON)
 
 on:
   schedule:
-    # Exécution le DIMANCHE à 22:05 UTC (≈ 00:05 le lundi en Europe/Paris l'été)
+    # DIMANCHE 22:05 UTC (≈ 00:05 lundi Europe/Paris en été)
     - cron: '5 22 * * 0'
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f .env ]; then
-            # charge variables non commentées dans l'env de l'étape
+            # charge les lignes non commentées dans l'env
             sed -e '/^\s*#/d' -e '/^\s*$/d' .env >> "$GITHUB_ENV"
           fi
 
@@ -50,7 +50,7 @@ jobs:
           echo "----- gap_output.txt -----"
           if [ -f gap_output.txt ]; then
             cat gap_output.txt
-          else:
+          else
             echo "gap_output.txt introuvable"
           fi
 
