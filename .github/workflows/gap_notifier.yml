@@ -2,9 +2,8 @@ name: Weekly Gap Notifier (Discord ON)
 
 on:
   schedule:
-    # DIMANCHE 22:05 UTC (≈ 00:05 lundi Europe/Paris en été)
-    - cron: '5 22 * * 0'
-  # Tu peux lancer manuellement quand tu veux : avec le fallback, un chiffre sortira quand même.
+    # Toutes les heures le dimanche (UTC)
+    - cron: '0 * * * 0'
   workflow_dispatch:
 
 jobs:
@@ -13,6 +12,19 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+
+      - name: Check Paris time
+        shell: bash
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          now = datetime.now(ZoneInfo("Europe/Paris"))
+          if not (now.weekday() == 6 and now.hour == 17):
+              print(f"Not Sunday 17:00 Paris time (current: {now}) — exiting.")
+              raise SystemExit(0)
+          print("OK — Sunday 17:00 Paris time, continuing.")
+          PY
 
       - name: Load .env into env
         shell: bash
@@ -37,7 +49,7 @@ jobs:
       - name: Run Gap Notifier (Discord ON)
         shell: bash
         env:
-          DRY_RUN: "0"            # 0 => envoi Discord activé
+          DRY_RUN: "0"
           OUTPUT_LOG: "gap_output.txt"
         run: |
           set -euo pipefail
